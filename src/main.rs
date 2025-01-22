@@ -3,6 +3,8 @@ use std::env;
 #[allow(unused_imports)]
 use std::fs;
 
+use anyhow::Error;
+
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     eprintln!("Logs from your program will appear here!");
@@ -19,4 +21,11 @@ fn main() {
         }
         _ => println!("unknown command: {}", args[1]),
     }
+}
+
+fn get_hash_path_sha(hash: &str) -> anyhow::Result<(&str, &str)> {
+    if hash.len() != 40 {
+        return Err(Error::msg("invalid sha length"));
+    }
+    Ok(hash.split_at(2))
 }
