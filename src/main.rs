@@ -1,14 +1,35 @@
 use anyhow::Error;
+use files::Blob;
 use flate2::bufread::ZlibEncoder;
 use flate2::read::ZlibDecoder;
 use flate2::Compression;
-use std::default::Default;
 #[allow(unused_imports)]
 use std::env;
 #[allow(unused_imports)]
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
+
+mod files;
+mod git_tree;
+
+pub trait GitObjectOperations {
+    fn new(path: &str) -> Self;
+    fn get_contents(contents: &[u8]) -> String;
+    //TODO: make this &self instead of associated?
+    fn encode_writer(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        let mut z = ZlibEncoder::new(bytes.as_slice(), Compression::best());
+        let mut buffer = vec![];
+        z.read_to_end(&mut buffer)?;
+        Ok(buffer)
+    }
+    fn decode_reader(bytes: Vec<u8>) -> anyhow::Result<String> {
+        let mut gz = ZlibDecoder::new(&bytes[..]);
+        let mut s = String::new();
+        gz.read_to_string(&mut s)?;
+        Ok(s)
+    }
+}
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -26,22 +47,21 @@ fn main() {
         }
         "cat-file" => {
             let (dir, file) = get_hash_path_sha(&args[3]).unwrap();
-            let file = std::fs::read(Path::new(&format!(".git/objects/{dir}/{file}"))).unwrap();
+            let file = Blob::new(&format!(".git/objects/{dir}/{file}"));
 
-            let decompress = decode_reader(file).unwrap();
+            let decompress = file.decode_reader(file).unwrap();
 
             let test: Vec<&str> = decompress.split("\0").collect();
             print!("{}", test[1])
         }
         "hash-object" => match args.len() {
-            1 => todo!("just print"),
             2.. => {
-                let file = args[3].as_str();
+                let file_path = args[3].as_str();
 
                 // Get the file contents
-                let contents = std::fs::read(Path::new(&format!("{file}"))).unwrap();
+                let contents = Blob::new(file_path);
                 // Add the necessary header data
-                let contents = get_contents(&contents);
+                let contents = contents.get_contents(&contents);
 
                 // Calculate the Hash
                 let hash = compute_hash(&contents).unwrap();
@@ -53,7 +73,7 @@ fn main() {
                 let (dir, file_name) = get_hash_path_sha(&hash).unwrap();
                 // Compress the data using zlib
                 let contents =
-                    encode_writer(contents.as_bytes().to_vec()).expect("invalid writing!!");
+                    files::encode_writer(contents.as_bytes().to_vec()).expect("invalid writing!!");
                 // Create the directory using the name from the hash
                 std::fs::create_dir(Path::new(&format!(".git/objects/{dir}"))).unwrap();
 
@@ -65,6 +85,8 @@ fn main() {
             }
             _ => panic!("incorrect command arguments"),
         },
+        "ls-tree" => {}
+
         _ => panic!("unknown command: {}", args[1]),
     }
 }
@@ -83,26 +105,4 @@ fn compute_hash(contents: &str) -> anyhow::Result<String> {
     let mut hash = sha1_smol::Sha1::new();
     hash.update(contents.as_bytes());
     Ok(hash.digest().to_string())
-}
-
-fn get_contents(contents: &[u8]) -> String {
-    format!(
-        "blob {}\0{}",
-        contents.len(),
-        String::from_utf8_lossy(contents)
-    )
-}
-
-fn encode_writer(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-    let mut z = ZlibEncoder::new(bytes.as_slice(), Compression::best());
-    let mut buffer = vec![];
-    z.read_to_end(&mut buffer)?;
-    Ok(buffer)
-}
-
-fn decode_reader(bytes: Vec<u8>) -> anyhow::Result<String> {
-    let mut gz = ZlibDecoder::new(&bytes[..]);
-    let mut s = String::new();
-    gz.read_to_string(&mut s)?;
-    Ok(s)
 }
