@@ -1,4 +1,3 @@
-use anyhow::Error;
 use files::Blob;
 use flate2::bufread::ZlibEncoder;
 use flate2::read::ZlibDecoder;
@@ -15,20 +14,23 @@ mod git_tree;
 
 pub trait GitObjectOperations {
     fn new(path: &str) -> Self;
-    fn get_contents(contents: &[u8]) -> String;
+    fn get_file_contents(&self) -> String;
+    fn get_bytes(&self) -> &[u8];
     //TODO: make this &self instead of associated?
-    fn encode_writer(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-        let mut z = ZlibEncoder::new(bytes.as_slice(), Compression::best());
+    fn encode_writer(&self) -> anyhow::Result<Vec<u8>> {
+        let mut z = ZlibEncoder::new(self.get_bytes(), Compression::best());
         let mut buffer = vec![];
         z.read_to_end(&mut buffer)?;
         Ok(buffer)
     }
-    fn decode_reader(bytes: Vec<u8>) -> anyhow::Result<String> {
-        let mut gz = ZlibDecoder::new(&bytes[..]);
+    fn decode_reader(&self) -> anyhow::Result<String> {
+        let mut gz = ZlibDecoder::new(self.get_bytes());
         let mut s = String::new();
         gz.read_to_string(&mut s)?;
         Ok(s)
     }
+    fn compute_hash(&self) -> anyhow::Result<String>;
+    fn get_hash_path_sha(hash: &str) -> anyhow::Result<(&str, &str)>;
 }
 
 fn main() {
@@ -46,10 +48,10 @@ fn main() {
             println!("Initialized git directory")
         }
         "cat-file" => {
-            let (dir, file) = get_hash_path_sha(&args[3]).unwrap();
+            let (dir, file) = Blob::get_hash_path_sha(&args[3]).unwrap();
             let file = Blob::new(&format!(".git/objects/{dir}/{file}"));
 
-            let decompress = file.decode_reader(file).unwrap();
+            let decompress = file.decode_reader().unwrap();
 
             let test: Vec<&str> = decompress.split("\0").collect();
             print!("{}", test[1])
@@ -59,21 +61,18 @@ fn main() {
                 let file_path = args[3].as_str();
 
                 // Get the file contents
-                let contents = Blob::new(file_path);
-                // Add the necessary header data
-                let contents = contents.get_contents(&contents);
+                let blob = Blob::new(file_path);
 
                 // Calculate the Hash
-                let hash = compute_hash(&contents).unwrap();
+                let hash = blob.compute_hash().unwrap();
 
                 // Print the hash to the terminal as per the spec
                 println!("{hash}");
 
                 // Get the directory and filename from the hash
-                let (dir, file_name) = get_hash_path_sha(&hash).unwrap();
+                let (dir, file_name) = Blob::get_hash_path_sha(&hash).unwrap();
                 // Compress the data using zlib
-                let contents =
-                    files::encode_writer(contents.as_bytes().to_vec()).expect("invalid writing!!");
+                let contents = blob.encode_writer().expect("invalid writing!!");
                 // Create the directory using the name from the hash
                 std::fs::create_dir(Path::new(&format!(".git/objects/{dir}"))).unwrap();
 
@@ -89,20 +88,4 @@ fn main() {
 
         _ => panic!("unknown command: {}", args[1]),
     }
-}
-
-fn get_hash_path_sha(hash: &str) -> anyhow::Result<(&str, &str)> {
-    if hash.len() != 40 {
-        return Err(Error::msg(format!(
-            "invalid sha length: {} instead of 40\nhash: {hash}",
-            hash.len()
-        )));
-    }
-    Ok(hash.split_at(2))
-}
-
-fn compute_hash(contents: &str) -> anyhow::Result<String> {
-    let mut hash = sha1_smol::Sha1::new();
-    hash.update(contents.as_bytes());
-    Ok(hash.digest().to_string())
 }

@@ -1,13 +1,15 @@
+use std::io::Read;
+
 use flate2::bufread::ZlibEncoder;
 use flate2::read::ZlibDecoder;
 use flate2::Compression;
 
 #[derive(Debug)]
 pub enum FileType {
-    RegularFile = 100644,
-    ExecutableFile = 100755,
-    SymbolicLink = 120000,
     Directory = 40000,
+    ExecutableFile = 100755,
+    RegularFile = 100644,
+    SymbolicLink = 120000,
 }
 
 pub fn get_contents(contents: &[u8]) -> String {
