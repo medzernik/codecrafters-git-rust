@@ -2,6 +2,7 @@ use files::Blob;
 use flate2::bufread::ZlibEncoder;
 use flate2::read::ZlibDecoder;
 use flate2::Compression;
+use git_tree::Tree;
 #[allow(unused_imports)]
 use std::env;
 #[allow(unused_imports)]
@@ -23,14 +24,22 @@ pub trait GitObjectOperations {
         z.read_to_end(&mut buffer)?;
         Ok(buffer)
     }
-    fn decode_reader(&self) -> anyhow::Result<String> {
-        let mut gz = ZlibDecoder::new(self.get_bytes());
-        let mut s = String::new();
-        gz.read_to_string(&mut s)?;
-        Ok(s)
-    }
     fn compute_hash(&self) -> anyhow::Result<String>;
-    fn get_hash_path_sha(hash: &str) -> anyhow::Result<(&str, &str)>;
+    fn get_hash_path_sha(hash: &str) -> anyhow::Result<(&str, &str)> {
+        if hash.len() != 40 {
+            return Err(anyhow::Error::msg(format!(
+                "invalid sha length: {} instead of 40\nhash: {hash}",
+                hash.len()
+            )));
+        }
+        Ok(hash.split_at(2))
+    }
+    fn decode_reader(data: &[u8]) -> Vec<u8> {
+        let mut gz = ZlibDecoder::new(data);
+        let mut buffer = vec![];
+        gz.read_to_end(&mut buffer).unwrap();
+        buffer
+    }
 }
 
 fn main() {
@@ -51,11 +60,13 @@ fn main() {
             let (dir, file) = Blob::get_hash_path_sha(&args[3]).unwrap();
             let file = Blob::new(&format!(".git/objects/{dir}/{file}"));
 
-            let decompress = file.decode_reader().unwrap();
+            let decompress = Blob::decode_reader(&file.contents);
+            let decompress = String::from_utf8_lossy(&decompress).to_string();
 
             let test: Vec<&str> = decompress.split("\0").collect();
             print!("{}", test[1])
         }
+
         "hash-object" => match args.len() {
             2.. => {
                 let file_path = args[3].as_str();
@@ -84,7 +95,16 @@ fn main() {
             }
             _ => panic!("incorrect command arguments"),
         },
-        "ls-tree" => {}
+        "ls-tree" => match args.len() {
+            2.. => {
+                let file_path = args[3].as_str();
+                let mode = args.get(4);
+                // Get the file contents
+                let tree = Tree::new(file_path);
+                println!("tree: {tree:#?}");
+            }
+            _ => panic!("incorrect command arguments"),
+        },
 
         _ => panic!("unknown command: {}", args[1]),
     }

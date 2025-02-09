@@ -1,8 +1,12 @@
-use std::io::Read;
-
 use flate2::bufread::ZlibEncoder;
 use flate2::read::ZlibDecoder;
 use flate2::Compression;
+use std::{
+    io::{BufRead, Read},
+    path::Path,
+};
+
+use crate::GitObjectOperations;
 
 #[derive(Debug)]
 pub enum FileType {
@@ -12,24 +16,54 @@ pub enum FileType {
     SymbolicLink = 120000,
 }
 
-pub fn get_contents(contents: &[u8]) -> String {
-    format!(
-        "tree {}\0{}",
-        contents.len(),
-        String::from_utf8_lossy(contents)
-    )
+#[derive(Debug)]
+pub struct Entry {
+    filetype: FileType,
+    sha: Vec<u8>,
+    name: String,
 }
 
-pub fn encode_writer(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-    let mut z = ZlibEncoder::new(bytes.as_slice(), Compression::best());
-    let mut buffer = vec![];
-    z.read_to_end(&mut buffer)?;
-    Ok(buffer)
+#[derive(Debug)]
+pub struct Tree {
+    contents: Vec<Entry>,
 }
 
-pub fn decode_reader(bytes: Vec<u8>) -> anyhow::Result<String> {
-    let mut gz = ZlibDecoder::new(&bytes[..]);
-    let mut s = String::new();
-    gz.read_to_string(&mut s)?;
-    Ok(s)
+impl GitObjectOperations for Tree {
+    fn new(hash: &str) -> Self {
+        let (dir, file) = Tree::get_hash_path_sha(hash).expect("cannot parse hash file for Tree");
+        let file = std::fs::read(Path::new(&format!(".git/objects/{dir}/{file}")))
+            .expect("cannot open fs file Tree");
+        let data = Tree::decode_reader(&file);
+        let split: Vec<String> = data
+            .split(|x| *x == 0)
+            .map(|slice| String::from_utf8_lossy(slice).to_string())
+            .collect();
+        println! {"data: {split:#?}"};
+
+        //header
+        let header = split
+            .first()
+            .unwrap()
+            .split_whitespace()
+            .collect::<Vec<&str>>();
+
+        if header[0] != "tree" || header.len() != 2 {
+            panic!("this is not a tree file!");
+        }
+        println!("size of the file is: {}", header[1]);
+
+        todo!()
+    }
+
+    fn get_file_contents(&self) -> String {
+        todo!()
+    }
+
+    fn get_bytes(&self) -> &[u8] {
+        todo!()
+    }
+
+    fn compute_hash(&self) -> anyhow::Result<String> {
+        todo!()
+    }
 }

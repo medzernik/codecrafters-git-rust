@@ -27,16 +27,6 @@ impl GitObjectOperations for Blob {
         &self.contents.as_slice()
     }
 
-    fn get_hash_path_sha(hash: &str) -> anyhow::Result<(&str, &str)> {
-        if hash.len() != 40 {
-            return Err(Error::msg(format!(
-                "invalid sha length: {} instead of 40\nhash: {hash}",
-                hash.len()
-            )));
-        }
-        Ok(hash.split_at(2))
-    }
-
     fn compute_hash(&self) -> anyhow::Result<String> {
         let mut hash = sha1_smol::Sha1::new();
         let contents = self.get_file_contents();
