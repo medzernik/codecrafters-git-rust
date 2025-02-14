@@ -1,29 +1,77 @@
-use std::{ascii::AsciiExt, io::BufRead, path::Path};
+use std::{fmt::Display, io::BufRead, path::Path};
 
 use crate::GitObjectOperations;
 
-#[derive(Debug)]
+const DIRECTORY: isize = 40000;
+const EXECUTABLE_FILE: isize = 100755;
+const REGULAR_FILE: isize = 100644;
+const SYMBOLIC_LINK: isize = 120000;
+const HASH_SIZE: usize = 20;
+
+#[derive(Debug, Clone, Copy)]
 pub enum FileType {
-    Directory = 40000,
-    ExecutableFile = 100755,
-    RegularFile = 100644,
-    SymbolicLink = 120000,
+    Directory = DIRECTORY,
+    ExecutableFile = EXECUTABLE_FILE,
+    RegularFile = REGULAR_FILE,
+    SymbolicLink = SYMBOLIC_LINK,
+}
+
+impl Display for FileType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", *self as isize)
+    }
+}
+
+impl TryFrom<&str> for FileType {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> anyhow::Result<Self, Self::Error> {
+        match isize::from_str_radix(&value, 10)? {
+            DIRECTORY => Ok(Self::Directory),
+            EXECUTABLE_FILE => Ok(Self::ExecutableFile),
+            REGULAR_FILE => Ok(Self::RegularFile),
+            SYMBOLIC_LINK => Ok(Self::SymbolicLink),
+            _ => Err(anyhow::Error::msg("invalid file type header")),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct Entry {
     filetype: FileType,
-    sha: Vec<u8>,
     name: String,
+    sha: Vec<u8>,
+}
+
+impl Entry {
+    pub fn new(filetype: FileType, name: String, sha: Vec<u8>) -> Self {
+        Self {
+            filetype,
+            name,
+            sha,
+        }
+    }
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct Tree {
     contents: Vec<Entry>,
     size: u32,
+    hash: String,
 }
 
-const BYTE_HASH_SIZE_SPLIT: usize = 21;
+impl Tree {
+    pub fn print_name_only(&self) {
+        let mut output: Vec<&str> = self.contents.iter().map(|x| x.get_name()).collect();
+        output.sort();
+        output.into_iter().for_each(|item| {
+            println!("{item}");
+        });
+    }
+}
 
 impl GitObjectOperations for Tree {
     fn new(hash: &str) -> Self {
@@ -32,42 +80,53 @@ impl GitObjectOperations for Tree {
         let file = std::fs::read(Path::new(&format!(".git/objects/{dir}/{file}")))
             .expect("cannot open fs file Tree");
         let data = Tree::decode_reader(&file);
-        let split: Vec<Vec<u8>> = data.splitn(2, |x| *x == 0).map(|x| x.to_vec()).collect();
 
-        //header
-        let header = String::from_utf8_lossy(&split[0]).to_string();
+        let header_body: Vec<Vec<u8>> = data.splitn(2, |x| *x == 0).map(|x| x.to_vec()).collect();
+
+        let header = String::from_utf8(header_body[0].clone()).unwrap();
+
+        // Get and check the header
         let header: Vec<&str> = header.split_whitespace().collect();
 
-        if header[0] != "tree" || header.len() != 2 {
-            panic!("this is not a tree file!");
+        if header.len() != 2 {
+            panic!("invalid header length, cannot spe")
         }
-        println!("size of the file is: {}", header[1]);
 
-        // Get each line
-        let mut lines = vec![];
-        let mut line = 0;
+        if *header.first().unwrap() != "tree" {
+            panic!("invalid tree file, header does not match tree");
+        }
 
-        for (i, num) in split[1].iter().enumerate() {
-            if *num == 0 {
-                println!("found the symbol at: {i}, {num}");
-                lines.push(&split[1][line..i + BYTE_HASH_SIZE_SPLIT]);
-                line = i + BYTE_HASH_SIZE_SPLIT;
-                // lines.iter().for_each(|x| println!("{:#?}", *x));
+        // Set the tree size
+        tree.size = u32::from_str_radix(header[1], 10).unwrap();
+        // println!("size: {}", tree.size);
+
+        // Split body into lines
+        // let mut lines = vec![];
+        let mut min = 0;
+
+        for (i, char) in header_body[1].iter().enumerate() {
+            // println!("{char}");
+            if *char == 0 {
+                // println!("{}", header_body[1].len());
+                let line = &header_body[1][min..i + HASH_SIZE];
+                let line: Vec<Vec<u8>> = line.split(|x| *x == 0).map(|x| x.to_vec()).collect();
+                let file_info = String::from_utf8_lossy(&line[0]).to_string();
+                let (mode, name) = file_info
+                    .split_once(' ')
+                    .expect("cannot have less than 2 items");
+                // println!("{mode}, {name}");
+                let mode: FileType = mode.trim().try_into().unwrap();
+
+                // println!("pushing info to tree!");
+                tree.contents
+                    .push(Entry::new(mode, name.to_string(), line[1].clone()));
+
+                min = i + HASH_SIZE + 1;
             }
         }
 
-        // Parse each line
-        for item in lines.into_iter() {
-            let item: Vec<Vec<u8>> = item.split(|x| *x == 0).map(|x| x.to_vec()).collect();
-            let (file_perm, file_name): (Vec<u8>, Vec<u8>) =
-                item[0].iter().partition(|x| x.is_ascii_whitespace());
-            let file_perm = String::from_utf8_lossy(&file_perm).to_string();
-            let file_name = String::from_utf8_lossy(&file_name).to_string();
-            println!(" file names and perms:  {file_name},{file_perm}");
-        }
-        //TODO: why is the space missing between file perm and file name??
-        todo!();
-
+        // println!("{tree:#?}");
+        // todo!();
         tree
     }
 

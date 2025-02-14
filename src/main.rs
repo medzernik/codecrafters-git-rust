@@ -98,9 +98,16 @@ fn main() {
         "ls-tree" => match args.len() {
             2.. => {
                 let file_path = args[3].as_str();
-                let mode = args.get(4);
                 // Get the file contents
                 let tree = Tree::new(file_path);
+                if let Some(mode_type) = args.get(4) {
+                    match mode_type.as_str() {
+                        "--name-only" => {
+                            tree.print_name_only();
+                        }
+                        _ => panic!("invalid argument"),
+                    }
+                }
                 println!("tree: {tree:#?}");
             }
             _ => panic!("incorrect command arguments"),
