@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use anyhow::Error;
-
 use crate::GitObjectOperations;
 
 #[derive(Debug)]
@@ -23,8 +21,13 @@ impl GitObjectOperations for Blob {
         )
     }
 
-    fn get_bytes(&self) -> &[u8] {
-        &self.contents.as_slice()
+    fn get_bytes(&self) -> Vec<u8> {
+        format!(
+            "blob {}\0{}",
+            self.contents.len(),
+            String::from_utf8_lossy(&self.contents)
+        )
+        .into_bytes()
     }
 
     fn compute_hash(&self) -> anyhow::Result<String> {

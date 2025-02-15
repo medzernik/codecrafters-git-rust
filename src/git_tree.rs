@@ -1,4 +1,4 @@
-use std::{fmt::Display, io::BufRead, path::Path};
+use std::{fmt::Display, path::Path};
 
 use crate::GitObjectOperations;
 
@@ -36,7 +36,6 @@ impl TryFrom<&str> for FileType {
     }
 }
 
-#[derive(Debug)]
 pub struct Entry {
     filetype: FileType,
     name: String,
@@ -56,7 +55,7 @@ impl Entry {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Tree {
     contents: Vec<Entry>,
     size: u32,
@@ -65,10 +64,10 @@ pub struct Tree {
 
 impl Tree {
     pub fn print_name_only(&self) {
-        let mut output: Vec<&str> = self.contents.iter().map(|x| x.get_name()).collect();
+        let mut output: Vec<&str> = self.contents.iter().map(|x| x.get_name().trim()).collect();
         output.sort();
         output.into_iter().for_each(|item| {
-            println!("{item}");
+            print!("{item}\n");
         });
     }
 }
@@ -98,26 +97,28 @@ impl GitObjectOperations for Tree {
 
         // Set the tree size
         tree.size = u32::from_str_radix(header[1], 10).unwrap();
-        // println!("size: {}", tree.size);
 
         // Split body into lines
-        // let mut lines = vec![];
         let mut min = 0;
 
         for (i, char) in header_body[1].iter().enumerate() {
-            // println!("{char}");
             if *char == 0 {
                 // println!("{}", header_body[1].len());
-                let line = &header_body[1][min..i + HASH_SIZE];
+                let line = &header_body[1][min..=i + HASH_SIZE];
+                // println!(
+                //     "line num: {i}:\n{line:?}\n{:?}",
+                //     line.iter().map(|x| *x as char).collect::<String>()
+                // );
                 let line: Vec<Vec<u8>> = line.split(|x| *x == 0).map(|x| x.to_vec()).collect();
                 let file_info = String::from_utf8_lossy(&line[0]).to_string();
+                // println!("{file_info}");
+                // println!("{}:{:?}", &line[1].len(), &line[1]);
                 let (mode, name) = file_info
                     .split_once(' ')
                     .expect("cannot have less than 2 items");
-                // println!("{mode}, {name}");
+                // println!("{mode},{name}");
                 let mode: FileType = mode.trim().try_into().unwrap();
 
-                // println!("pushing info to tree!");
                 tree.contents
                     .push(Entry::new(mode, name.to_string(), line[1].clone()));
 
@@ -125,8 +126,6 @@ impl GitObjectOperations for Tree {
             }
         }
 
-        // println!("{tree:#?}");
-        // todo!();
         tree
     }
 
@@ -134,7 +133,7 @@ impl GitObjectOperations for Tree {
         todo!()
     }
 
-    fn get_bytes(&self) -> &[u8] {
+    fn get_bytes(&self) -> Vec<u8> {
         todo!()
     }
 

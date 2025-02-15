@@ -16,10 +16,10 @@ mod git_tree;
 pub trait GitObjectOperations {
     fn new(path: &str) -> Self;
     fn get_file_contents(&self) -> String;
-    fn get_bytes(&self) -> &[u8];
-    //TODO: make this &self instead of associated?
+    fn get_bytes(&self) -> Vec<u8>;
     fn encode_writer(&self) -> anyhow::Result<Vec<u8>> {
-        let mut z = ZlibEncoder::new(self.get_bytes(), Compression::best());
+        let bytes = self.get_bytes();
+        let mut z = ZlibEncoder::new(bytes.as_slice(), Compression::best());
         let mut buffer = vec![];
         z.read_to_end(&mut buffer)?;
         Ok(buffer)
@@ -60,13 +60,13 @@ fn main() {
             let (dir, file) = Blob::get_hash_path_sha(&args[3]).unwrap();
             let file = Blob::new(&format!(".git/objects/{dir}/{file}"));
 
-            let decompress = Blob::decode_reader(&file.contents);
-            let decompress = String::from_utf8_lossy(&decompress).to_string();
+            let decompress = Blob::decode_reader(file.get_file_contents().as_bytes());
+            let decompress = String::from_utf8(decompress).unwrap();
+            println!("decompress: {decompress}");
 
             let test: Vec<&str> = decompress.split("\0").collect();
             print!("{}", test[1])
         }
-
         "hash-object" => match args.len() {
             2.. => {
                 let file_path = args[3].as_str();
@@ -100,7 +100,7 @@ fn main() {
                 let file_path = args[3].as_str();
                 // Get the file contents
                 let tree = Tree::new(file_path);
-                if let Some(mode_type) = args.get(4) {
+                if let Some(mode_type) = args.get(2) {
                     match mode_type.as_str() {
                         "--name-only" => {
                             tree.print_name_only();
@@ -108,7 +108,6 @@ fn main() {
                         _ => panic!("invalid argument"),
                     }
                 }
-                println!("tree: {tree:#?}");
             }
             _ => panic!("incorrect command arguments"),
         },
