@@ -78,7 +78,7 @@ impl GitObjectOperations for Tree {
         let (dir, file) = Tree::get_hash_path_sha(hash).expect("cannot parse hash file for Tree");
         let file = std::fs::read(Path::new(&format!(".git/objects/{dir}/{file}")))
             .expect("cannot open fs file Tree");
-        let data = Tree::decode_reader(&file);
+        let data = Tree::decode_reader_bytes(&file);
 
         let header_body: Vec<Vec<u8>> = data.splitn(2, |x| *x == 0).map(|x| x.to_vec()).collect();
 

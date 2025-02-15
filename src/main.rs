@@ -34,10 +34,16 @@ pub trait GitObjectOperations {
         }
         Ok(hash.split_at(2))
     }
-    fn decode_reader(data: &[u8]) -> Vec<u8> {
+    fn decode_reader_bytes(data: &[u8]) -> Vec<u8> {
         let mut gz = ZlibDecoder::new(data);
         let mut buffer = vec![];
         gz.read_to_end(&mut buffer).unwrap();
+        buffer
+    }
+    fn decode_reader_string(data: &[u8]) -> String {
+        let mut gz = ZlibDecoder::new(data);
+        let mut buffer = String::default();
+        gz.read_to_string(&mut buffer).unwrap();
         buffer
     }
 }
@@ -60,10 +66,7 @@ fn main() {
             let (dir, file) = Blob::get_hash_path_sha(&args[3]).unwrap();
             let file = Blob::new(&format!(".git/objects/{dir}/{file}"));
 
-            let decompress = Blob::decode_reader(file.get_file_contents().as_bytes());
-            let decompress = String::from_utf8(decompress).unwrap();
-            println!("decompress: {decompress}");
-
+            let decompress = Blob::decode_reader_string(&file.contents);
             let test: Vec<&str> = decompress.split("\0").collect();
             print!("{}", test[1])
         }
