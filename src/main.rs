@@ -106,7 +106,7 @@ fn main() {
                 if let Some(mode_type) = args.get(2) {
                     match mode_type.as_str() {
                         "--name-only" => {
-                            tree.print_name_only();
+                            println!("{}", tree.get_file_contents());
                         }
                         _ => panic!("invalid argument"),
                     }

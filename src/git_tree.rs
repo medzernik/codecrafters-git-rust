@@ -63,12 +63,27 @@ pub struct Tree {
 }
 
 impl Tree {
-    pub fn print_name_only(&self) {
-        let mut output: Vec<&str> = self.contents.iter().map(|x| x.get_name().trim()).collect();
-        output.sort();
-        output.into_iter().for_each(|item| {
-            print!("{item}\n");
-        });
+    fn parse_body(&mut self, header_body: &[u8]) -> anyhow::Result<()> {
+        // Split body into lines
+        let mut min = 0;
+        for (i, char) in header_body.iter().enumerate() {
+            if *char == 0 {
+                let line = &header_body[min..=i + HASH_SIZE];
+                let line: Vec<Vec<u8>> = line.split(|x| *x == 0).map(|x| x.to_vec()).collect();
+                // This is a problem since paths dont have to be UTF8.
+                let file_info = String::from_utf8_lossy(&line[0]).to_string();
+                let (mode, name) = file_info
+                    .split_once(' ')
+                    .expect("cannot have less than 2 items");
+                let mode: FileType = mode.trim().try_into()?;
+
+                self.contents
+                    .push(Entry::new(mode, name.to_string(), line[1].clone()));
+
+                min = i + HASH_SIZE + 1;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -82,13 +97,12 @@ impl GitObjectOperations for Tree {
 
         let header_body: Vec<Vec<u8>> = data.splitn(2, |x| *x == 0).map(|x| x.to_vec()).collect();
 
-        let header = String::from_utf8(header_body[0].clone()).unwrap();
-
         // Get and check the header
+        let header = String::from_utf8(header_body[0].clone()).unwrap();
         let header: Vec<&str> = header.split_whitespace().collect();
 
         if header.len() != 2 {
-            panic!("invalid header length, cannot spe")
+            panic!("invalid header length, cannot split filetype from name")
         }
 
         if *header.first().unwrap() != "tree" {
@@ -98,39 +112,21 @@ impl GitObjectOperations for Tree {
         // Set the tree size
         tree.size = u32::from_str_radix(header[1], 10).unwrap();
 
-        // Split body into lines
-        let mut min = 0;
-
-        for (i, char) in header_body[1].iter().enumerate() {
-            if *char == 0 {
-                // println!("{}", header_body[1].len());
-                let line = &header_body[1][min..=i + HASH_SIZE];
-                // println!(
-                //     "line num: {i}:\n{line:?}\n{:?}",
-                //     line.iter().map(|x| *x as char).collect::<String>()
-                // );
-                let line: Vec<Vec<u8>> = line.split(|x| *x == 0).map(|x| x.to_vec()).collect();
-                let file_info = String::from_utf8_lossy(&line[0]).to_string();
-                // println!("{file_info}");
-                // println!("{}:{:?}", &line[1].len(), &line[1]);
-                let (mode, name) = file_info
-                    .split_once(' ')
-                    .expect("cannot have less than 2 items");
-                // println!("{mode},{name}");
-                let mode: FileType = mode.trim().try_into().unwrap();
-
-                tree.contents
-                    .push(Entry::new(mode, name.to_string(), line[1].clone()));
-
-                min = i + HASH_SIZE + 1;
-            }
-        }
+        // Parse the body
+        tree.parse_body(&header_body[1])
+            .expect("failed to parse the body");
 
         tree
     }
 
     fn get_file_contents(&self) -> String {
-        todo!()
+        let mut output: Vec<&str> = self.contents.iter().map(|x| x.get_name().trim()).collect();
+        output.sort();
+        let mut result = String::default();
+        output.into_iter().for_each(|item| {
+            result.push_str(&format!("{item}\n"));
+        });
+        result
     }
 
     fn get_bytes(&self) -> Vec<u8> {
