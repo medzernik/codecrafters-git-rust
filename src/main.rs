@@ -114,6 +114,7 @@ fn main() {
             }
             _ => panic!("incorrect command arguments"),
         },
+        "write-tree" => {}
 
         _ => panic!("unknown command: {}", args[1]),
     }

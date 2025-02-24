@@ -116,6 +116,8 @@ impl GitObjectOperations for Tree {
         tree.parse_body(&header_body[1])
             .expect("failed to parse the body");
 
+        tree.hash = tree.compute_hash().expect("cannot compute hash");
+
         tree
     }
 
@@ -130,10 +132,20 @@ impl GitObjectOperations for Tree {
     }
 
     fn get_bytes(&self) -> Vec<u8> {
-        todo!()
+        [
+            "tree ".as_bytes(),
+            &self.size.to_ne_bytes(),
+            "\0".as_bytes(),
+            self.get_file_contents().as_bytes(),
+        ]
+        .concat()
     }
 
     fn compute_hash(&self) -> anyhow::Result<String> {
-        todo!()
+        let mut hash = sha1_smol::Sha1::new();
+        let contents = self.get_bytes();
+
+        hash.update(&contents);
+        Ok(hash.digest().to_string())
     }
 }
