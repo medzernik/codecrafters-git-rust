@@ -117,6 +117,7 @@ fn main() {
         },
         "write-tree" => {
             let tree = Tree::new_create();
+            println!("TREE FILE\n{:#?}", tree);
         }
 
         _ => panic!("unknown command: {}", args[1]),

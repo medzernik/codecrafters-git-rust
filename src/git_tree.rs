@@ -1,4 +1,8 @@
-use std::{fmt::Display, path::Path};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use crate::GitObjectOperations;
 
@@ -36,6 +40,7 @@ impl TryFrom<&str> for FileType {
     }
 }
 
+#[derive(Debug)]
 pub struct Entry {
     filetype: FileType,
     name: String,
@@ -55,7 +60,7 @@ impl Entry {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Tree {
     header: Vec<Vec<u8>>,
     contents: Vec<Entry>,
@@ -64,6 +69,12 @@ pub struct Tree {
 }
 
 impl Tree {
+    fn calculate_data_hash(data: &[u8]) -> anyhow::Result<String> {
+        let mut hash = sha1_smol::Sha1::new();
+        hash.update(data);
+        Ok(hash.digest().to_string())
+    }
+
     fn parse_header(&mut self, data: &[u8]) -> anyhow::Result<()> {
         self.header = data.splitn(2, |x| *x == 0).map(|x| x.to_vec()).collect();
 
@@ -114,6 +125,46 @@ impl Tree {
         }
         Ok(())
     }
+
+    fn parse_directory(&mut self, path: PathBuf) -> Option<Entry> {
+        for entry in std::fs::read_dir(&path).unwrap() {
+            let entry = entry.unwrap();
+            if let Ok(file_metadata) = entry.metadata() {
+                if file_metadata.file_type().is_dir() {
+                    print!("-\t",);
+                    self.parse_directory(entry.path());
+                    return Some(Entry {
+                        filetype: FileType::Directory,
+                        name: entry.file_name().into_string().unwrap(),
+                        sha: vec![],
+                    });
+                } else {
+                    // println!("FILE PATH: {}", path.to_str().unwrap());
+                    // println!("FILE INFO: {}", file_metadata.is_file());
+                    let file = match std::fs::read(&path) {
+                        Ok(val) => {
+                            println!("Filename: {}", entry.file_name().to_str().unwrap());
+                            val
+                        }
+                        Err(_) => {
+                            println!(
+                                "cannot do stuff {}, {}",
+                                entry.file_name().to_str().unwrap(),
+                                file_metadata.is_dir()
+                            );
+                            continue;
+                        }
+                    };
+                    return Some(Entry {
+                        filetype: FileType::RegularFile,
+                        name: entry.file_name().into_string().unwrap(),
+                        sha: Tree::calculate_data_hash(&file).unwrap().into(),
+                    });
+                }
+            }
+        }
+        None
+    }
 }
 
 impl GitObjectOperations for Tree {
@@ -138,15 +189,10 @@ impl GitObjectOperations for Tree {
 
     fn new_create() -> Self {
         let mut tree = Tree::default();
-
-        for entry in std::fs::read_dir(".").unwrap() {
-            let dir = entry.unwrap();
-            println!(
-                "{:?} : {:?}",
-                dir.metadata().unwrap().file_type(),
-                dir.file_name()
-            );
+        if let Some(item) = tree.parse_directory(PathBuf::from_str(".").unwrap()) {
+            tree.contents.push(item);
         }
+
         tree
     }
 
