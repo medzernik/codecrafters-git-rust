@@ -14,7 +14,8 @@ mod files;
 mod git_tree;
 
 pub trait GitObjectOperations {
-    fn new(path: &str) -> Self;
+    fn new_read(path: &str) -> Self;
+    fn new_create() -> Self;
     fn get_file_contents(&self) -> String;
     fn get_bytes(&self) -> Vec<u8>;
     fn encode_writer(&self) -> anyhow::Result<Vec<u8>> {
@@ -64,7 +65,7 @@ fn main() {
         }
         "cat-file" => {
             let (dir, file) = Blob::get_hash_path_sha(&args[3]).unwrap();
-            let file = Blob::new(&format!(".git/objects/{dir}/{file}"));
+            let file = Blob::new_read(&format!(".git/objects/{dir}/{file}"));
 
             let decompress = Blob::decode_reader_string(&file.contents);
             let test: Vec<&str> = decompress.split("\0").collect();
@@ -75,7 +76,7 @@ fn main() {
                 let file_path = args[3].as_str();
 
                 // Get the file contents
-                let blob = Blob::new(file_path);
+                let blob = Blob::new_read(file_path);
 
                 // Calculate the Hash
                 let hash = blob.compute_hash().unwrap();
@@ -102,7 +103,7 @@ fn main() {
             2.. => {
                 let file_path = args[3].as_str();
                 // Get the file contents
-                let tree = Tree::new(file_path);
+                let tree = Tree::new_read(file_path);
                 if let Some(mode_type) = args.get(2) {
                     match mode_type.as_str() {
                         "--name-only" => {
@@ -114,7 +115,9 @@ fn main() {
             }
             _ => panic!("incorrect command arguments"),
         },
-        "write-tree" => {}
+        "write-tree" => {
+            let tree = Tree::new_create();
+        }
 
         _ => panic!("unknown command: {}", args[1]),
     }

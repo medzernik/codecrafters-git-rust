@@ -8,10 +8,14 @@ pub struct Blob {
 }
 
 impl GitObjectOperations for Blob {
-    fn new(path: &str) -> Self {
+    fn new_read(path: &str) -> Self {
         Self {
             contents: std::fs::read(Path::new(path)).unwrap(),
         }
+    }
+
+    fn new_create() -> Self {
+        todo!()
     }
     fn get_file_contents(&self) -> String {
         format!(

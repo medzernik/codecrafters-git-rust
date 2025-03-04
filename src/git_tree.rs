@@ -117,13 +117,16 @@ impl Tree {
 }
 
 impl GitObjectOperations for Tree {
-    fn new(hash: &str) -> Self {
+    fn new_read(hash: &str) -> Self {
         let mut tree = Tree::default();
         let (dir, file) = Tree::get_hash_path_sha(hash).expect("cannot parse hash file for Tree");
         let file = std::fs::read(Path::new(&format!(".git/objects/{dir}/{file}")))
             .expect("cannot open fs file Tree");
         let data = Tree::decode_reader_bytes(&file);
-        tree.parse_header(&data).unwrap();
+
+        // Parse the header
+        tree.parse_header(&data)
+            .expect("failed to parse the header");
 
         // Parse the body
         tree.parse_body().expect("failed to parse the body");
@@ -133,9 +136,25 @@ impl GitObjectOperations for Tree {
         tree
     }
 
+    fn new_create() -> Self {
+        let mut tree = Tree::default();
+
+        for entry in std::fs::read_dir(".").unwrap() {
+            let dir = entry.unwrap();
+            println!(
+                "{:?} : {:?}",
+                dir.metadata().unwrap().file_type(),
+                dir.file_name()
+            );
+        }
+        tree
+    }
+
     fn get_file_contents(&self) -> String {
         let mut output: Vec<&str> = self.contents.iter().map(|x| x.get_name().trim()).collect();
+        // We need to sort according to the spec
         output.sort();
+
         let mut result = String::default();
         output.into_iter().for_each(|item| {
             result.push_str(&format!("{item}\n"));
