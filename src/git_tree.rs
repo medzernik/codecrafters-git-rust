@@ -57,19 +57,48 @@ impl Entry {
 
 #[derive(Default)]
 pub struct Tree {
+    header: Vec<Vec<u8>>,
     contents: Vec<Entry>,
     size: u32,
     hash: String,
 }
 
 impl Tree {
-    fn parse_body(&mut self, header_body: &[u8]) -> anyhow::Result<()> {
+    fn parse_header(&mut self, data: &[u8]) -> anyhow::Result<()> {
+        self.header = data.splitn(2, |x| *x == 0).map(|x| x.to_vec()).collect();
+
+        // Get and check the header
+        let parsed_header = String::from_utf8(self.header[0].clone()).unwrap();
+        let parsed_header: Vec<String> = parsed_header
+            .split_whitespace()
+            .map(|x| x.to_string())
+            .collect();
+
+        if parsed_header.len() != 2 {
+            return Err(anyhow::anyhow!(
+                "invalid header length, cannot split filetype from name",
+            ));
+        }
+
+        if *parsed_header.first().unwrap() != "tree" {
+            return Err(anyhow::anyhow!(
+                "invalid tree file, header does not match tree"
+            ));
+        }
+        // Set the tree size
+        self.size = u32::from_str_radix(&parsed_header[1], 10).unwrap();
+
+        Ok(())
+    }
+
+    fn parse_body(&mut self) -> anyhow::Result<()> {
         // Split body into lines
         let mut min = 0;
-        for (i, char) in header_body.iter().enumerate() {
+        for (i, char) in self.header[1].iter().enumerate() {
             if *char == 0 {
-                let line = &header_body[min..=i + HASH_SIZE];
+                let line = &self.header[1][min..=i + HASH_SIZE];
                 let line: Vec<Vec<u8>> = line.split(|x| *x == 0).map(|x| x.to_vec()).collect();
+
                 // This is a problem since paths dont have to be UTF8.
                 let file_info = String::from_utf8_lossy(&line[0]).to_string();
                 let (mode, name) = file_info
@@ -94,27 +123,10 @@ impl GitObjectOperations for Tree {
         let file = std::fs::read(Path::new(&format!(".git/objects/{dir}/{file}")))
             .expect("cannot open fs file Tree");
         let data = Tree::decode_reader_bytes(&file);
-
-        let header_body: Vec<Vec<u8>> = data.splitn(2, |x| *x == 0).map(|x| x.to_vec()).collect();
-
-        // Get and check the header
-        let header = String::from_utf8(header_body[0].clone()).unwrap();
-        let header: Vec<&str> = header.split_whitespace().collect();
-
-        if header.len() != 2 {
-            panic!("invalid header length, cannot split filetype from name")
-        }
-
-        if *header.first().unwrap() != "tree" {
-            panic!("invalid tree file, header does not match tree");
-        }
-
-        // Set the tree size
-        tree.size = u32::from_str_radix(header[1], 10).unwrap();
+        tree.parse_header(&data).unwrap();
 
         // Parse the body
-        tree.parse_body(&header_body[1])
-            .expect("failed to parse the body");
+        tree.parse_body().expect("failed to parse the body");
 
         tree.hash = tree.compute_hash().expect("cannot compute hash");
 
